@@ -7,6 +7,7 @@
  */
 #define __ASSEMBLY__
 #include <asm/hcall.h>
+#include <asm/ppc_asm.h>
 
 #define LOAD_REG_IMMEDIATE(reg,expr)		\
 	lis	reg,(expr)@highest;		\
@@ -25,6 +26,7 @@
  */
 .globl start
 start:
+	RETURN_FROM_BE
 	/*
 	 * We were loaded at QEMU's kernel load address, but we're not
 	 * allowed to link there due to how QEMU deals with linker VMAs,
@@ -93,11 +95,15 @@ halt:
 enter_rtas:
 	mflr	r0
 	std	r0, 16(r1)
+
+	LOAD_REG_ADDR(r10,rtas_return_loc)
+	mtlr	r10
+
 	LOAD_REG_ADDR(r10, rtas_blob)
-//FIXME: change this bctrl to an rtas-prep, rfid, rtas-return sequence
-	mtctr	r10
-	nop
-	bctrl
+	B_BE(r10)
+
+rtas_return_loc:
+	RETURN_FROM_BE
 	ld	r0, 16(r1)
 	mtlr	r0
 	blr

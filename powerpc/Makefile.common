@@ -11,14 +11,15 @@ all: $(TEST_DIR)/boot_rom.bin test_cases
 
 ##################################################################
 
-CFLAGS += $(arch_CFLAGS)
-CFLAGS += -std=gnu99
-CFLAGS += -ffreestanding
-CFLAGS += -Wextra
-CFLAGS += -O2
-CFLAGS += -I lib -I lib/libfdt
-CFLAGS += -Wa,-mregnames
-CFLAGS += -fpie
+common_CFLAGS = -std=gnu99
+common_CFLAGS += -ffreestanding
+common_CFLAGS += -Wextra
+common_CFLAGS += -O2
+common_CFLAGS += -I lib -I lib/libfdt
+common_CFLAGS += -Wa,-mregnames
+common_CFLAGS += -fpie
+
+CFLAGS += $(arch_CFLAGS) $(common_CFLAGS)
 
 asm-offsets = lib/$(ARCH)/asm-offsets.h
 include scripts/asm-offsets.mak
@@ -48,6 +49,7 @@ $(TEST_DIR)/boot_rom.bin: $(TEST_DIR)/boot_rom.elf
 	dd if=/dev/zero of=$@ bs=256 count=1
 	$(OBJCOPY) -O binary $^ >(cat - >>$@)
 
+$(TEST_DIR)/boot_rom.elf: CFLAGS = -mbig-endian $(common_CFLAGS) $(main_CFLAGS)
 $(TEST_DIR)/boot_rom.elf: $(TEST_DIR)/boot_rom.o
 	$(LD) -EB -nostdlib -Ttext=0x100 --entry=start --build-id=none -o $@ $<
 
