@@ -40,12 +40,13 @@ include $(TEST_DIR)/Makefile
 cc-option = $(shell if $(CC) $(1) -S -o /dev/null -xc /dev/null \
               > /dev/null 2>&1; then echo "$(1)"; else echo "$(2)"; fi ;)
 
-CFLAGS += -g
-CFLAGS += $(autodepend-flags) -Wall
-CFLAGS += $(call cc-option, -fomit-frame-pointer, "")
-CFLAGS += $(call cc-option, -fno-stack-protector, "")
-CFLAGS += $(call cc-option, -fno-stack-protector-all, "")
+main_CFLAGS = -g
+main_CFLAGS += $(autodepend-flags) -Wall
+main_CFLAGS += $(call cc-option, -fomit-frame-pointer, "")
+main_CFLAGS += $(call cc-option, -fno-stack-protector, "")
+main_CFLAGS += $(call cc-option, -fno-stack-protector-all, "")
 
+CFLAGS += $(main_CFLAGS) 
 CXXFLAGS += $(CFLAGS)
 
 autodepend-flags = -MMD -MF $(dir $*).$(notdir $*).d

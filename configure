@@ -10,6 +10,7 @@ ar=ar
 arch=`uname -m | sed -e 's/i.86/i386/;s/arm.*/arm/;s/ppc64.*/ppc64/'`
 host=$arch
 cross_prefix=
+endian=big # default for ppc64, the only user
 
 usage() {
     cat <<-EOF
@@ -23,6 +24,7 @@ usage() {
 	    --ld=LD		   ld linker to use ($ld)
 	    --prefix=PREFIX        where to install things ($prefix)
 	    --kerneldir=DIR        kernel build directory for kvm.h ($kerneldir)
+	    --endian=ENDIAN        endianness to compile for (little or big)
 EOF
     exit 1
 }
@@ -50,6 +52,9 @@ while [[ "$1" = -* ]]; do
 	--cross-prefix)
 	    cross_prefix="$arg"
 	    ;;
+        --endian)
+            endian="$arg"
+            ;;
 	--cc)
 	    cc="$arg"
 	    ;;
@@ -139,4 +144,5 @@ AR=$cross_prefix$ar
 API=$api
 TEST_DIR=$testdir
 FIRMWARE=$firmware
+ENDIAN=$endian
 EOF
