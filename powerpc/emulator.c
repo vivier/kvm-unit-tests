@@ -6,12 +6,25 @@
 #include <asm/processor.h>
 
 static int volatile is_invalid;
+static int volatile alignment;
 
 static void program_check_handler(struct pt_regs *regs, void *opaque)
 {
 	int *data = opaque;
 
 	printf("Detected invalid instruction 0x%016lx: %08x\n",
+	       regs->nip, *(uint32_t*)regs->nip);
+
+	*data = 1;
+
+	regs->nip += 4;
+}
+
+static void alignment_handler(struct pt_regs *regs, void *opaque)
+{
+	int *data = opaque;
+
+	printf("Detected alignment exception 0x%016lx: %08x\n",
 	       regs->nip, *(uint32_t*)regs->nip);
 
 	*data = 1;
@@ -62,6 +75,8 @@ static void test_64bit(void)
  * - RT <= RA or RB < RT + (n + 4) is invalid or result is undefined
  * - RT == RA == 0 is invalid
  *
+ * For lswx in little-endian mode, an alignment interrupt always occurs.
+ *
  */
 
 #define SPR_XER	1
@@ -81,6 +96,7 @@ static void test_lswx(void)
 
 	/* check incomplete register filling */
 
+	alignment = 0;
 	asm volatile ("mtspr %[XER], %[len];"
 		      "li r12,-1;"
 		      "mr r11, r12;"
@@ -98,7 +114,12 @@ static void test_lswx(void)
 		       */
 		      "xer", "r11", "r12");
 
+#if  __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
+	report("alignment", alignment);
+	return;
+#else
 	report("partial", regs[0] == 0x01020300 && regs[1] == (uint64_t)-1);
+#endif
 
 	/* check an old know bug: the number of bytes is used as
 	 * the number of registers, so try 32 bytes.
@@ -195,6 +216,7 @@ static void test_lswx(void)
 int main(void)
 {
 	handle_exception(0x700, program_check_handler, (void *)&is_invalid);
+	handle_exception(0x600, alignment_handler, (void *)&alignment);
 
 	report_prefix_push("emulator");
 
