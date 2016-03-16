@@ -32,12 +32,26 @@ static void test_illegal(void)
 	report_prefix_pop();
 }
 
+static void test_64bit(void)
+{
+	uint64_t msr;
+
+	report_prefix_push("64bit");
+
+	asm("mfmsr %[msr]": [msr] "=r" (msr));
+
+	report("detected", msr & 0x8000000000000000UL);
+
+	report_prefix_pop();
+}
+
 int main(void)
 {
 	handle_exception(0x700, program_check_handler, (void *)&is_invalid);
 
 	report_prefix_push("emulator");
 
+	test_64bit();
 	test_illegal();
 
 	report_prefix_pop();
