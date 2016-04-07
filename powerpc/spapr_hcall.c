@@ -9,6 +9,7 @@
 #include <util.h>
 #include <alloc.h>
 #include <asm/hcall.h>
+#include <asm/processor.h>
 
 #define PAGE_SIZE 4096
 
@@ -22,6 +23,18 @@
 })
 
 #define SPR_SPRG0	0x110
+#define SPR_LPCR	0x13E
+
+#define GET_AIL(a)	(((a) >> 23) & 3)
+
+static int volatile is_invalid;
+static void program_check_handler(struct pt_regs *regs, void *opaque)
+{
+        int *data = opaque;
+        *data = regs->msr >> 16;
+
+        regs->nip += 4;
+}
 
 /**
  * Test the H_SET_SPRG0 h-call by setting some values and checking whether
@@ -137,6 +150,103 @@ static void test_h_random(int argc, char **argv)
 	report("no stuck bits", rc == H_SUCCESS && val0 == ~0ULL && val1 == 0);
 }
 
+/*
+ * Test H_SET_MODE h_call()
+ *
+ * Note: H_SET_MODE(H_SET_MODE_RESOURCE_LE) is already
+ *       called in cpu_init() to set endianness of the interrupt
+ *       handler.
+ */
+
+static void test_h_set_mode(int argc, char **argv)
+{
+	int rc;
+	uint64_t old_AIL, lpcr;
+
+	if (argc > 1)
+		report_abort("Unsupported argument: '%s'", argv[1]);
+
+	/* Address Translation Mode on Interrupt
+	 * (set Alternate Interrupt Location in LPCR)
+	 * Note: only supported on POWER ISA level 2.07 and beyond
+	 */
+
+	report_prefix_push("AIL");
+
+	lpcr = mfspr(SPR_LPCR);
+	old_AIL = GET_AIL(lpcr);
+	/* check reserved value fails */
+
+	rc = hcall(H_SET_MODE, AIL_RESERVED,
+		   H_SET_MODE_RESOURCE_ADDR_TRANS_MODE, 0, 0);
+	report_xfail("Reserved", rc == H_P2, rc == H_UNSUPPORTED_FLAG);
+	if (rc == H_P2)
+		goto out;
+
+	/* check the normal mode */
+
+	rc = hcall(H_SET_MODE, AIL_NONE,
+		   H_SET_MODE_RESOURCE_ADDR_TRANS_MODE, 0, 0);
+	report("Set Mode 0", rc == H_SUCCESS);
+
+	/* check value1 cannot be set */
+
+	rc = hcall(H_SET_MODE, AIL_NONE,
+		   H_SET_MODE_RESOURCE_ADDR_TRANS_MODE, 1, 0);
+	report("value1", rc == H_P3);
+
+	/* check value2 cannot be set */
+
+	rc = hcall(H_SET_MODE, AIL_NONE,
+		   H_SET_MODE_RESOURCE_ADDR_TRANS_MODE, 0, 1);
+	report("value2", rc == H_P4);
+
+	/* check LPCR */
+
+	lpcr = mfspr(SPR_LPCR);
+	report("Check LPCR Mode 0", GET_AIL(lpcr) == AIL_NONE);
+
+	/* Address 0x000180000 */
+
+	rc = hcall(H_SET_MODE, AIL_0001_8000,
+		   H_SET_MODE_RESOURCE_ADDR_TRANS_MODE, 0, 0);
+	report("Set Mode 2", rc == H_SUCCESS);
+
+	/* check LPCR */
+
+	lpcr = mfspr(SPR_LPCR);
+	report("check LPCR Mode 2", GET_AIL(lpcr) == AIL_0001_8000);
+
+	/* Address C000_0000_0000_4000 */
+
+	rc = hcall(H_SET_MODE, AIL_C000_0000_0000_4000,
+		   H_SET_MODE_RESOURCE_ADDR_TRANS_MODE, 0, 0);
+	report("Set Mode 3", rc == H_SUCCESS);
+
+	/* check LPCR */
+
+	lpcr = mfspr(SPR_LPCR);
+	report("Check LPCR Mode 3", GET_AIL(lpcr) == AIL_C000_0000_0000_4000);
+
+	/* Restore AIL value */
+
+	rc = hcall(H_SET_MODE, old_AIL,
+		   H_SET_MODE_RESOURCE_ADDR_TRANS_MODE, 0, 0);
+	report("Restore original AIL", rc == H_SUCCESS);
+
+	/* this should not crash */
+
+	handle_exception(0x700, program_check_handler, (void *)&is_invalid);
+	is_invalid = 0;
+
+	asm volatile(".long 0"); /* invalid instruction */
+
+	report("Check exception", is_invalid == 8);
+
+out:
+	report_prefix_pop();
+}
+
 struct {
 	const char *name;
 	void (*func)(int argc, char **argv);
@@ -144,6 +254,7 @@ struct {
 	{ "h_set_sprg0", test_h_set_sprg0 },
 	{ "h_page_init", test_h_page_init },
 	{ "h_random", test_h_random },
+	{ "h_set_mode", test_h_set_mode },
 	{ NULL, NULL }
 };
 

@@ -14,6 +14,10 @@
 #define H_FUNCTION		-2
 #define H_PRIVILEGE		-3
 #define H_PARAMETER		-4
+#define H_P2			-55
+#define H_P3			-56
+#define H_P4			-57
+#define H_UNSUPPORTED_FLAG	-256
 
 #define H_SET_SPRG0		0x24
 #define H_SET_DABR		0x28
@@ -27,6 +31,10 @@
 #define H_SET_MODE_RESOURCE_SET_CIABR          1
 #define H_SET_MODE_RESOURCE_SET_DAWR           2
 #define H_SET_MODE_RESOURCE_ADDR_TRANS_MODE    3
+#  define AIL_NONE			0
+#  define AIL_RESERVED			1
+#  define AIL_0001_8000			2
+#  define AIL_C000_0000_0000_4000	3
 #define H_SET_MODE_RESOURCE_LE                 4
 #  define H_SET_MODE_ENDIAN_BIG		0
 #  define H_SET_MODE_ENDIAN_LITTLE	1
