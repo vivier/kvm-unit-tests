@@ -90,9 +90,11 @@ static void cpu_init(void)
 	/* Interrupt Endianness */
 
 #if  __BYTE_ORDER__ == __ORDER_LITTLE_ENDIAN__
-        hcall(H_SET_MODE, 1, 4, 0, 0);
+        hcall(H_SET_MODE, H_SET_MODE_ENDIAN_LITTLE,
+	      H_SET_MODE_RESOURCE_LE, 0, 0);
 #else
-        hcall(H_SET_MODE, 0, 4, 0, 0);
+        hcall(H_SET_MODE, H_SET_MODE_ENDIAN_BIG,
+	      H_SET_MODE_RESOURCE_LE, 0, 0);
 #endif
 }
 

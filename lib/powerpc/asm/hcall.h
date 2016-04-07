@@ -22,6 +22,15 @@
 #define H_RANDOM		0x300
 #define H_SET_MODE		0x31C
 
+/* H_SET_MODE resource value */
+
+#define H_SET_MODE_RESOURCE_SET_CIABR          1
+#define H_SET_MODE_RESOURCE_SET_DAWR           2
+#define H_SET_MODE_RESOURCE_ADDR_TRANS_MODE    3
+#define H_SET_MODE_RESOURCE_LE                 4
+#  define H_SET_MODE_ENDIAN_BIG		0
+#  define H_SET_MODE_ENDIAN_LITTLE	1
+
 #ifndef __ASSEMBLY__
 /*
  * hcall_have_broken_sc1 checks if we're on a host with a broken sc1.
