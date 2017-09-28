@@ -7,7 +7,7 @@
  */
 #include <libcflat.h>
 
-#define NR_CPUS			8	/* arbitrarily set for now */
+#define NR_CPUS			16	/* Maximum supported by KVM on P9 */
 extern u32 cpus[NR_CPUS];
 extern int nr_cpus;
 

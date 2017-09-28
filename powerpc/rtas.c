@@ -5,10 +5,18 @@
 #include <libcflat.h>
 #include <util.h>
 #include <asm/rtas.h>
+#include <asm/setup.h>
+#include <devicetree.h>
 
 #define DAYS(y,m,d) (365UL * (y) + ((y) / 4) - ((y) / 100) + ((y) / 400) + \
 		     367UL * (m) / 12  + \
 		     (d))
+
+/* from qemu/include/hw/ppc/xics.h */
+
+#define XICS_BUID       0x1
+#define XICS_IRQ_BASE   (XICS_BUID << 12)
+#define XICS_IRQS_SPAPR	1024
 
 static unsigned long mktime(int year, int month, int day,
 			    int hour, int minute, int second)
@@ -110,6 +118,140 @@ static void check_set_time_of_day(void)
 	report("running", t1 + DELAY <= t2);
 }
 
+static int current_cpu;
+static int xics_server[NR_CPUS];
+
+static void cpu_get_server(int cpu_node, u64 regval, void *info __unused)
+{
+	const struct fdt_property *prop;
+	int len;
+	u32 *data;
+
+	prop = fdt_get_property(dt_fdt(), cpu_node,
+				"ibm,ppc-interrupt-server#s", &len);
+
+	data = (u32 *)prop->data;
+	xics_server[current_cpu++] = fdt32_to_cpu(*data);
+}
+
+static int xics_get_server(int cpu)
+{
+	return xics_server[cpu];
+}
+
+static void check_xics(void)
+{
+	int ret;
+	uint32_t set_xive_token, get_xive_token;
+	uint32_t int_off_token, int_on_token;
+	int state[3];
+	int irq;
+
+	ret = rtas_token("ibm,get-xive", &get_xive_token);
+	report("get-xive token available", ret == 0);
+	if (ret)
+		return;
+
+	ret = rtas_token("ibm,set-xive", &set_xive_token);
+	report("set-xive token available", ret == 0);
+	if (ret)
+		return;
+
+	ret = rtas_token("ibm,int-off", &int_off_token);
+	report("int-off token available", ret == 0);
+	if (ret)
+		return;
+
+	ret = rtas_token("ibm,int-on", &int_on_token);
+	report("int-on token available", ret == 0);
+	if (ret)
+		return;
+
+	report("%d cpus detected", nr_cpus > 1, nr_cpus);
+
+	/* retrieve XICS server id / cpu */
+	ret = dt_for_each_cpu_node(cpu_get_server, NULL);
+	assert(ret == 0);
+
+	for (irq = XICS_IRQ_BASE; irq < XICS_IRQ_BASE + XICS_IRQS_SPAPR;
+	     irq++) {
+		ret = rtas_call(set_xive_token, 3, 1, state, irq,
+				xics_get_server(irq % nr_cpus), irq % 256);
+		if (ret) {
+			report("set-xive: irq #%d, cpu %d prio %d, ret = %d",
+			       false, irq, irq % nr_cpus, irq % 256, ret);
+			return;
+		}
+	}
+	report("set-xive", true);
+
+	for (irq = XICS_IRQ_BASE; irq < XICS_IRQ_BASE + XICS_IRQS_SPAPR;
+	     irq++) {
+		state[0] = -1;
+		state[1] = -1;
+		ret = rtas_call(get_xive_token, 1, 3, state, irq);
+		if (ret || state[0] != xics_get_server(irq % nr_cpus) ||
+                    state[1] != irq % 256) {
+			report("get-xive: irq #%d, expected cpu %d prio %d,"
+			       " had cpu %d prio %d, ret = %d", false,
+			       irq, irq % nr_cpus, irq % 256, state[0], state[1],
+			       ret);
+			return;
+		}
+	}
+	report("get-xive", true);
+
+	for (irq = XICS_IRQ_BASE; irq < XICS_IRQ_BASE + XICS_IRQS_SPAPR;
+	     irq++) {
+		ret = rtas_call(int_off_token, 1, 1, state, irq);
+		if (ret) {
+			report("int-off: irq #%d, ret = %d", false, irq, ret);
+			return;
+		}
+	}
+
+	for (irq = XICS_IRQ_BASE; irq < XICS_IRQ_BASE + XICS_IRQS_SPAPR;
+	     irq++) {
+		state[0] = -1;
+		state[1] = 0;
+		ret = rtas_call(get_xive_token, 1, 3, state, irq);
+		if (ret || state[0] != xics_get_server(irq % nr_cpus) ||
+                    state[1] != 0xff) {
+			report("int-off: irq #%d, expected cpu %d prio %d,"
+			       " had cpu %d prio %d, ret = %d", false,
+			       irq, irq % nr_cpus, 0xff, state[0], state[1],
+			       ret);
+			return;
+		}
+	}
+	report("int-off", true);
+
+	for (irq = XICS_IRQ_BASE; irq < XICS_IRQ_BASE + XICS_IRQS_SPAPR;
+	     irq++) {
+		ret = rtas_call(int_on_token, 1, 1, state, irq);
+		if (ret) {
+			report("int-on: irq #%d, ret = %d", false, irq, ret);
+			return;
+		}
+	}
+
+	for (irq = XICS_IRQ_BASE; irq < XICS_IRQ_BASE + XICS_IRQS_SPAPR;
+	     irq++) {
+		state[0] = -1;
+		state[1] = -1;
+		ret = rtas_call(get_xive_token, 1, 3, state, irq);
+		if (ret || state[0] != xics_get_server(irq % nr_cpus) ||
+                    state[1] != irq % 256) {
+			report("int-on: irq #%d, expected cpu %d prio %d,"
+			       " had cpu %d prio %d, ret = %d", false,
+			       irq, irq % nr_cpus, irq % 256, state[0], state[1],
+                               ret);
+			return;
+		}
+	}
+	report("int-on", true);
+}
+
 int main(int argc, char **argv)
 {
 	int len;
@@ -136,6 +278,10 @@ int main(int argc, char **argv)
 	} else if (strcmp(argv[1], "set-time-of-day") == 0) {
 
 		check_set_time_of_day();
+
+	} else if (strcmp(argv[1], "xics") == 0) {
+
+		check_xics();
 
 	} else {
 		printf("Unknown subtest\n");
